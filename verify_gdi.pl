@@ -3,29 +3,35 @@
 use v5.20;
 
 use File::Spec::Functions 'catfile';
+use File::Basename;
 use XML::LibXML;
-use Data::Dumper;
-use Set::Scalar;
+# use Data::Dumper;
+# use Set::Scalar;
 use Getopt::Std;
 
-# sub ident_file {
-#     my $gdi_path = $_[0];
-#     my @csum = split(/\s/, `md5sum $gdi_path`);
-#     my $dom = $_[1];
+# given the path to the .gdi file, get a list of files in that .gdi file
+# paths returned are relative to the directory the .gdi is in; they are not
+# full paths
+sub enum_gdi_files {
+    my $gdi_path = @_[0];
 
-#     for my $game ($dom->findnodes('/datafile/game')) {
-#         my $title = $game->{name};
-#         #say "game found - $title";
-#         for my $rom ($game->getElementsByTagName('rom')) {
-#             my $md5 = $rom->{md5};
-#             if ($md5 eq $csum[0]) {
-#                 #say "file $gdi_path matches $rom->{name} in $title";
-#                 return [$title, $rom->{name}];
-#             }
-#         }
-#     }
-#     return undef;
-# }
+    # need to store the relative path of the gdi so we separate out the dirs
+    my ($filename, $dirs, $suffix) = fileparse($gdi_path);
+    my @file_list = ( $filename . $suffix );
+
+    open my $dh, "<", $gdi_path or die "could not open $gdi_path";
+
+    for (<$dh>) {
+        chomp;
+        my @fields = split;
+        next if(scalar(@fields) < 5);
+        push @file_list, $fields[4];
+    }
+
+    close $dh;
+
+    return @file_list;
+}
 
 # given a game's name and a pointer to the tosec dom, get a reference to a hash of files and their md5sums
 sub tosec_file_list {
@@ -75,23 +81,38 @@ sub md5sum_directory {
     return \%res;
 }
 
+# file_list must be full paths
+# returns hash that maps paths to md5sums
+sub md5sum_files {
+    my %res;
+    my @file_list = @{$_[0]};
+
+    for (@file_list) {
+        say "md5sum $_";
+        my @md5sum = split(/\s/, `md5sum $_`);
+        $res{$_} = $md5sum[0];
+    }
+    return \%res;
+}
+
 ################################################################################
 #
-# is_valid_gdi
+# get_gdi_path
 #
-# returns true if the given path is a valid .gdi image
+# returns the full path to the .gdi file, or undef if there is none (or if
+#     there's more than one)
 #
 # ARGUMENTS:
 #     string representing a path to the directory which contains the .gdi and
 #         the binary track files
 #
 ################################################################################
-sub is_valid_gdi {
+sub get_gdi_path {
     my $gdi_dir = @_[0];
-    my $have_gdi_file = 0;
+    my $gdi_file = undef;
 
-    -d $gdi_dir or return 0;
-    opendir(my $dh, $gdi_dir) or return 0;
+    -d $gdi_dir or return undef;
+    opendir(my $dh, $gdi_dir) or return undef;
 
     # make sure there's a .gdi file
     while (readdir $dh) {
@@ -99,19 +120,19 @@ sub is_valid_gdi {
         my $node = $_;
         my $full_path = catfile($gdi_dir, $node);
         if ($node =~ m/\.gdi$/ && -r $full_path) {
-            if ($have_gdi_file) {
+            if ($gdi_file) {
                 # we don't allow for duplicate .gdi files
-                return 0;
+                return undef;
             } else {
                 say "gdi file found to be $node";
-                $have_gdi_file = 1;
+                $gdi_file = $full_path;
             }
         }
     }
 
     closedir($dh);
 
-    return $have_gdi_file;
+    return $gdi_file;
 }
 
 my $use_str =
@@ -127,7 +148,12 @@ $opt_t or die $use_str;
 my $romdir = $opt_g;
 my $tosec_path = $opt_t;
 
-is_valid_gdi($romdir) || die "$romdir is not a valid GDI image";
+(my $gdi_path = get_gdi_path($romdir))
+    || die "$romdir is not a valid GDI image";
+
+say "gdi found at \"$gdi_path\"";
+
+my @file_list = enum_gdi_files($gdi_path);
 
 say "checking $romdir against $tosec_path...";
 
@@ -139,102 +165,61 @@ my %roms;
 
 my $n_roms = 0;
 
-my %gdi_list;
-
-opendir(my $dh, $romdir) or die "unable to open $romdir";
-while (readdir $dh) {
-    next if $_ eq '.' or $_ eq '..';
-    say "evaluating md5 checksum of $_...";
-    $n_roms++;
-
+my @file_list_full_paths;
+for (@file_list) {
+    say $_;
     my $full_gdi_path = catfile($romdir, $_);
-
-    my $file_list = md5sum_directory($romdir);
-    next if !defined($file_list);
-    say 'alright its goin\' in the file list...';
-    $gdi_list{$full_gdi_path} = $file_list;
-
-    # $roms{$full_gdi_path} = Set::Scalar->new();
-    # opendir(my $gdi_dir_handle, $full_gdi_path);
-    # while (readdir $gdi_dir_handle) {
-    #     next if $_ eq '.' or $_ eq '..';
-    #     my $full_path = catfile($full_gdi_path, $_);
-    #     my $match = ident_file($full_path, $tosec);
-    #     if (defined($match)) {
-    #         $roms{$full_gdi_path} += $match->[0];
-    #         say "$full_path is a match for $match->[1] in $match->[0]";
-    #     }
-    # }
-    #closedir($gdi_dir_handle);
+    push @file_list_full_paths, $full_gdi_path;
 }
-closedir($dh);
 
-#say Dumper \%gdi_list;
+my %md5sums = %{md5sum_files(\@file_list_full_paths)};
+
+# hash that maps romfile paths to the identified romfile and game
+my %rom_id;
 
  gdi:
-for my $gdi (keys(%gdi_list)) {
-    say "evaluating $gdi...";
+    for my $romfile (keys(%md5sums)) {
+        say "evaluating $romfile, md5sum $md5sums{$romfile}...";
+        $rom_id{$romfile} = [ ];
+        for my $game ($tosec->findnodes('/datafile/game')) {
+            for my $tosec_rom ($game->getElementsByTagName('rom')) {
+                my $md5_expect = $tosec_rom->{md5};
 
-    my $gdi_files = $gdi_list{$gdi};
-
-  tosec_game:
-    for my $game ($tosec->findnodes('/datafile/game')) {
-      romfile:
-        for my $romfile ($game->getElementsByTagName('rom')) {
-            my $md5_expect = $romfile->{md5};
-
-            for my $md5_actual (values(%$gdi_files)) {
-                if ($md5_actual eq $md5_expect) {
-                    next romfile;
+                if ($md5_expect eq $md5sums{$romfile}) {
+                    push @{$rom_id{$romfile}}, [$tosec_rom->{name}, $game->{name}];
                 }
             }
-            next tosec_game;
-      }
-        say "$gdi identified as \"$game->{name}\"";
-        next gdi;
-    }
-
-    say "unable to make definite identification of $gdi";
+        }
+#        say "unable to make definite identification of $romfile";
 }
 
-# say "=========================================================================";
-# say "==";
-# say "== total of " . scalar(%roms) . " / $n_roms rom matches found";
-# say "==";
-# say "=========================================================================";
+# for each matched game, count the number of matched roms
+# the one that matches the most is the one this game probably is
+my %pop_count;
 
-# #say Dumper \%roms;
+for my $romfile (keys(%rom_id)) {
+    my $rom_list = $rom_id{$romfile};
+    say "$romfile has " . scalar(@{$rom_list}) . " matches:";
 
-# for my $gdi_path (keys(%roms)) {
-#     my $matches = $roms{$gdi_path};
-#     say "$gdi_path: " . $matches->size . " candidates found";
+    for my $match (@{$rom_list}) {
+        say "\tmatch is \"$match->[0]\" in \"$match->[1]\"";
+        if (defined($pop_count{$match->[1]})) {
+            $pop_count{$match->[1]}++;
+        } else {
+            $pop_count{$match->[1]} = 1;
+        }
+    }
+}
 
-#     for my $game ($matches->elements) {
-#         say "\t$game";
-#         my %files = tosec_file_list($game, $tosec);
-#         for my $filename (keys(%files)) {
-#             say "\t\t$filename => $files{$filename}";
-#         }
-#     }
-# }
+my $max = 0;
+my $best_match = "";
+for my $game (keys(%pop_count)) {
+    if ($pop_count{$game} > $max) {
+        $max = $pop_count{$game};
+        $best_match = $game;
+    }
+}
 
-# #say "%roms";
+say "this game is most likely \"$best_match\"";
 
-# #for my $gdi_path (keys(%roms)) {
-# #    say "$_........................$roms{$_}";
-# #}
-
-# #my $match = ident_file("/home/snickers/dreamcast_rips/sonic_adventure/track03.bin",
-# #                       $tosec);
-
-
-# #say "first arg is $ARGV[0]";
-
-# # opendir(my $dir, "$ARGV[0]") or die "unable to open $ARGV[0]";
-
-# # while (my $gdi_dir = readdir($dir)) {
-# #     next if ($gdi_dir eq '.' or $gdi_dir eq '..');
-# #     say "found $gdi_dir";
-# # }
-
-# # close($dir);
+# TODO: verify that all roms needed for $best_match are present
