@@ -43,16 +43,28 @@ sub tosec_file_list {
     return undef;
 }
 
-# given a path to our gdi's directory, get a reference to a hash of files and their md5sums
-sub actual_file_list {
+################################################################################
+#
+# md5sum_directory
+#
+# This function will iterate through all files in the given directory and return
+# a reference to a hash which maps file paths to the md5sums of the given files
+#
+# ARGUMENTS:
+#     string representing a path to the directory which contains the .gdi and
+#         the binary track files
+#
+################################################################################
+sub md5sum_directory {
     my $gdi_dir = @_[0];
     my %res;
 
+    die "$gdi_dir is not a directory!" if !(-d $gdi_dir);
     say "going to try to open $gdi_dir";
     opendir(my $gdi_dir_handle, $gdi_dir) or return undef;
     say 'well we got it open...';
     while (readdir $gdi_dir_handle) {
-        next if $_ eq '.' or $_ eq '..';
+        next if -d $_;
         my $full_path = catfile($gdi_dir, $_);
         my @md5sum = split(/\s/, `md5sum $full_path`);
         $res{$full_path} = $md5sum[0];
@@ -85,7 +97,7 @@ while (readdir $dh) {
 
     my $full_gdi_path = catfile($romdir, $_);
 
-    my $file_list = actual_file_list($romdir);
+    my $file_list = md5sum_directory($romdir);
     next if !defined($file_list);
     say 'alright its goin\' in the file list...';
     $gdi_list{$full_gdi_path} = $file_list;
