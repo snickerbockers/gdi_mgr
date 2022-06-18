@@ -59,7 +59,7 @@ sub md5sum_directory {
     my $gdi_dir = @_[0];
     my %res;
 
-    die "$gdi_dir is not a directory!" if !(-d $gdi_dir);
+    die "\"$gdi_dir\" is not a directory!" if !(-d $gdi_dir);
     say "going to try to open $gdi_dir";
     opendir(my $gdi_dir_handle, $gdi_dir) or return undef;
     say 'well we got it open...';
@@ -74,8 +74,49 @@ sub md5sum_directory {
     return \%res;
 }
 
+################################################################################
+#
+# is_valid_gdi
+#
+# returns true if the given path is a valid .gdi image
+#
+# ARGUMENTS:
+#     string representing a path to the directory which contains the .gdi and
+#         the binary track files
+#
+################################################################################
+sub is_valid_gdi {
+    my $gdi_dir = @_[0];
+    my $have_gdi_file = 0;
+
+    -d $gdi_dir or return 0;
+    opendir(my $dh, $gdi_dir) or return 0;
+
+    # make sure there's a .gdi file
+    while (readdir $dh) {
+        next if -d;
+        my $node = $_;
+        my $full_path = catfile($gdi_dir, $node);
+        if ($node =~ m/\.gdi/ && -r $full_path) {
+            if ($have_gdi_file) {
+                # we don't allow for duplicate .gdi files
+                return 0;
+            } else {
+                say "gdi file found to be $node";
+                $have_gdi_file = 1;
+            }
+        }
+    }
+
+    closedir($dh);
+
+    return $have_gdi_file;
+}
+
 my $romdir = $ARGV[0];
 my $tosec_path = $ARGV[1];
+
+is_valid_gdi($romdir) || die "$romdir is not a valid GDI image";
 
 say "checking $romdir against $tosec_path...";
 
