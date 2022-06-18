@@ -98,7 +98,7 @@ sub is_valid_gdi {
         next if -d;
         my $node = $_;
         my $full_path = catfile($gdi_dir, $node);
-        if ($node =~ m/\.gdi/ && -r $full_path) {
+        if ($node =~ m/\.gdi$/ && -r $full_path) {
             if ($have_gdi_file) {
                 # we don't allow for duplicate .gdi files
                 return 0;
