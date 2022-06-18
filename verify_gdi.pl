@@ -6,6 +6,7 @@ use File::Spec::Functions 'catfile';
 use XML::LibXML;
 use Data::Dumper;
 use Set::Scalar;
+use Getopt::Std;
 
 # sub ident_file {
 #     my $gdi_path = $_[0];
@@ -113,15 +114,25 @@ sub is_valid_gdi {
     return $have_gdi_file;
 }
 
-my $romdir = $ARGV[0];
-my $tosec_path = $ARGV[1];
+my $use_str =
+    "usage: verify_gdi -t <path_to_tosec.xml> -g <path_to_gdi_directory>";
+
+our $opt_t;
+our $opt_g;
+getopts('t:g:');
+
+$opt_g or die $use_str;
+$opt_t or die $use_str;
+
+my $romdir = $opt_g;
+my $tosec_path = $opt_t;
 
 is_valid_gdi($romdir) || die "$romdir is not a valid GDI image";
 
 say "checking $romdir against $tosec_path...";
 
 my $xml_parser = XML::LibXML->new;
-my $tosec = $xml_parser->parse_file($ARGV[1]) or die "unable to load TOSEC database";
+my $tosec = $xml_parser->parse_file($tosec_path) or die "unable to load TOSEC database";
 
 # hash that maps gdi directories to game names in the TOSEC.
 my %roms;
