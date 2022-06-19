@@ -211,19 +211,30 @@ for my $romfile (keys(%rom_id)) {
 }
 
 my $max = 0;
-my $best_match = "";
+my @match_list;
 for my $game (keys(%pop_count)) {
     if ($pop_count{$game} > $max) {
         $max = $pop_count{$game};
-        $best_match = $game;
+        @match_list = ( $game );
+    } elsif ($pop_count{$game} == $max) {
+        push @match_list, $game;
     }
 }
-# TODO: need to handle possibility that there are more than one best matches
 
 if ($max <= 0) {
     say "ERROR - unable to identify game";
     exit 1;
 }
+
+if (scalar(@match_list) != 1) {
+    say "ERROR - unable to identify game - more than one best candidates found";
+    for my $match(@match_list) {
+        say "\tcould be \"$match\"";
+    }
+    exit 1;
+}
+
+my $best_match = $match_list[0];
 
 say "this game is most likely \"$best_match\"";
 
