@@ -164,6 +164,15 @@ $verbose_mode = $opt_v;
 $romdir = $opt_g;
 my $tosec_path = $opt_t;
 
+# correct input if the user gave us a path to the .gdi file instead of its
+# parent directory
+if ($romdir =~ m/\.gdi$/i) {
+    my $orig_gdi_path = $romdir;
+    my ($filename, $dirs, $suffix) = fileparse($romdir);
+    if (get_gdi_path($dirs) eq $romdir) {
+        $romdir = $dirs;
+    }
+}
 (my $gdi_path = get_gdi_path($romdir))
     || exit_error("$romdir is not a valid GDI image");
 
