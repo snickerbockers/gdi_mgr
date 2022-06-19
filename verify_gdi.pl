@@ -148,13 +148,30 @@ sub get_gdi_path {
     return $gdi_file;
 }
 
+my $invocation_str =
+    "verify_gdi [-h -v] -t <path_to_tosec.xml> -g <path_to_gdi_directory>";
+
 my $use_str =
-    "usage: verify_gdi -t <path_to_tosec.xml> -g <path_to_gdi_directory>";
+    "INVALID PARAMETERS.  run `verify_gdi -h` for documentation on proper usage\n";
+
 
 our $opt_t;
 our $opt_g;
 our $opt_v;
-getopts('t:g:v');
+our $opt_h;
+getopts('t:g:vh');
+
+if ($opt_h) {
+    # display help-string and exit
+    say $invocation_str;
+    say "used to verify a SEGA Dreamcast .gdi dump against a TOSEC database";
+    say "OPTIONS:";
+    say "\t-h\tdisplay help string (ie this) and exit";
+    say "\t-v\tverbose mode";
+    say "\t-t\tpath to TOSEC .xml database";
+    say "\t-g\tpath to either the .gdi file or the directory that contains it";
+    exit 0;
+}
 
 $opt_g or exit_error($use_str);
 $opt_t or exit_error($use_str);
