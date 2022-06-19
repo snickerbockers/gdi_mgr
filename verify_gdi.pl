@@ -7,6 +7,21 @@ use File::Basename;
 use XML::LibXML;
 use Getopt::Std;
 
+my $verbose_mode = 0;
+my $romdir; # directory holding the .gdi
+
+sub say_verbose {
+    if ($verbose_mode) {
+        say $_[0];
+    }
+}
+
+sub exit_error {
+    say "INPUT: '$romdir'";
+    say "\tERROR: @_[0]";
+    exit 2;
+}
+
 # given the path to the .gdi file, get a list of files in that .gdi file
 # paths returned are relative to the directory the .gdi is in; they are not
 # full paths
@@ -17,7 +32,7 @@ sub enum_gdi_files {
     my ($filename, $dirs, $suffix) = fileparse($gdi_path);
     my @file_list = ( $filename . $suffix );
 
-    open my $dh, "<", $gdi_path or die "could not open $gdi_path";
+    open my $dh, "<", $gdi_path or exit_error("could not open $gdi_path");
 
     for (<$dh>) {
         chomp;
@@ -64,10 +79,10 @@ sub md5sum_directory {
     my $gdi_dir = @_[0];
     my %res;
 
-    die "\"$gdi_dir\" is not a directory!" if !(-d $gdi_dir);
-    say "going to try to open $gdi_dir";
+    exit_error("\"$gdi_dir\" is not a directory!") if !(-d $gdi_dir);
+    say_verbose("going to try to open $gdi_dir");
     opendir(my $gdi_dir_handle, $gdi_dir) or return undef;
-    say 'well we got it open...';
+    say_verbose('well we got it open...');
     while (readdir $gdi_dir_handle) {
         next if -d $_;
         my $full_path = catfile($gdi_dir, $_);
@@ -86,7 +101,7 @@ sub md5sum_files {
     my @file_list = @{$_[0]};
 
     for (@file_list) {
-        say "md5sum $_";
+        say_verbose("md5sum $_");
         my @md5sum = split(/\s/, `md5sum $_`);
         $res{$_} = $md5sum[0];
     }
@@ -122,7 +137,7 @@ sub get_gdi_path {
                 # we don't allow for duplicate .gdi files
                 return undef;
             } else {
-                say "gdi file found to be $node";
+                say_verbose("gdi file found to be $node");
                 $gdi_file = $full_path;
             }
         }
@@ -138,25 +153,28 @@ my $use_str =
 
 our $opt_t;
 our $opt_g;
-getopts('t:g:');
+our $opt_v;
+getopts('t:g:v');
 
-$opt_g or die $use_str;
-$opt_t or die $use_str;
+$opt_g or exit_error($use_str);
+$opt_t or exit_error($use_str);
 
-my $romdir = $opt_g;
+$verbose_mode = $opt_v;
+
+$romdir = $opt_g;
 my $tosec_path = $opt_t;
 
 (my $gdi_path = get_gdi_path($romdir))
-    || die "$romdir is not a valid GDI image";
+    || exit_error("$romdir is not a valid GDI image");
 
-say "gdi found at \"$gdi_path\"";
+say_verbose("gdi found at \"$gdi_path\"");
 
 my @file_list = enum_gdi_files($gdi_path);
 
-say "checking $romdir against $tosec_path...";
+say_verbose("checking $romdir against $tosec_path...");
 
 my $xml_parser = XML::LibXML->new;
-my $tosec = $xml_parser->parse_file($tosec_path) or die "unable to load TOSEC database";
+my $tosec = $xml_parser->parse_file($tosec_path) or exit_error("unable to load TOSEC database");
 
 # hash that maps gdi directories to game names in the TOSEC.
 my %roms;
@@ -165,7 +183,7 @@ my $n_roms = 0;
 
 my @file_list_full_paths;
 for (@file_list) {
-    say $_;
+    say_verbose($_);
     my $full_gdi_path = catfile($romdir, $_);
     push @file_list_full_paths, $full_gdi_path;
 }
@@ -177,7 +195,7 @@ my %rom_id;
 
  gdi:
     for my $romfile (keys(%md5sums)) {
-        say "evaluating $romfile, md5sum $md5sums{$romfile}...";
+        say_verbose("evaluating $romfile, md5sum $md5sums{$romfile}...");
         $rom_id{$romfile} = [ ];
         for my $game ($tosec->findnodes('/datafile/game')) {
             for my $tosec_rom ($game->getElementsByTagName('rom')) {
@@ -196,10 +214,10 @@ my %pop_count;
 
 for my $romfile (keys(%rom_id)) {
     my $rom_list = $rom_id{$romfile};
-    say "$romfile has " . scalar(@{$rom_list}) . " matches:";
+    say_verbose("$romfile has " . scalar(@{$rom_list}) . " matches:");
 
     for my $match (@{$rom_list}) {
-        say "\tmatch is \"$match->[0]\" in \"$match->[1]\"";
+        say_verbose("\tmatch is \"$match->[0]\" in \"$match->[1]\"");
         if (defined($pop_count{$match->[1]})) {
             $pop_count{$match->[1]}++;
         } else {
@@ -220,21 +238,25 @@ for my $game (keys(%pop_count)) {
 }
 
 if ($max <= 0) {
-    say "ERROR - unable to identify game";
+    say "INPUT: '$romdir'";
+    say "\tNO BEST MATCH FOUND";
+    say "\tCOMMENT: entirely unable to identify game";
     exit 1;
 }
 
 if (scalar(@match_list) != 1) {
-    say "ERROR - unable to identify game - more than one best candidates found";
+    say "INPUT: '$romdir'";
+    say "\tNO BEST MATCH FOUND";
+    say "COMMENT: more than one best candidates found:";
     for my $match(@match_list) {
-        say "\tcould be \"$match\"";
+        say "\tCOMMENT: could be '$match'";
     }
     exit 1;
 }
 
 my $best_match = $match_list[0];
 
-say "this game is most likely \"$best_match\"";
+say_verbose("this game is most likely \"$best_match\"");
 
 my $error_count = 0;
 # TODO: verify that all roms needed for $best_match are present
@@ -249,16 +271,21 @@ for my $game ($tosec->findnodes('/datafile/game')) {
                     next tosec_rom;
                 }
             }
-            say "ERROR - could not find a match for $tosec_rom->{name}";
+            say_verbose("ERROR - could not find a match for $tosec_rom->{name}");
             $error_count++;
         }
     }
 }
 
+# generate final report in an easily-parsable format
+say "INPUT: '$romdir'";
+say "\tBEST MATCH: '$best_match'";
 if ($error_count == 0) {
-    say "game confirmed to be \"$best_match\"";
+    say "\tCONFIRMATION: '$best_match'";
+    say "\tCOMMENT: identity successfully confirmed.";
     exit 0;
 } else {
-    say "not all roms required by \"$best_match\" could be matched in the game";
+    say "\tNO CONFIRMATION";
+    say "\tCOMMENT: the input did not match all files required by '$best_match' and therefore was not confirmed";
     exit 1;
 }
