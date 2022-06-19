@@ -102,7 +102,7 @@ sub md5sum_files {
 
     for (@file_list) {
         say_verbose("md5sum $_");
-        my @md5sum = split(/\s/, `md5sum $_`);
+        my @md5sum = split(/\s/, `md5sum "$_"`);
         $res{$_} = $md5sum[0];
     }
     return \%res;
