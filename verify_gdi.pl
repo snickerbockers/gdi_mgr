@@ -190,7 +190,6 @@ my %rom_id;
                 }
             }
         }
-#        say "unable to make definite identification of $romfile";
 }
 
 # for each matched game, count the number of matched roms
@@ -219,7 +218,38 @@ for my $game (keys(%pop_count)) {
         $best_match = $game;
     }
 }
+# TODO: need to handle possibility that there are more than one best matches
+
+if ($max <= 0) {
+    say "ERROR - unable to identify game";
+    exit 1;
+}
 
 say "this game is most likely \"$best_match\"";
 
+my $error_count = 0;
 # TODO: verify that all roms needed for $best_match are present
+for my $game ($tosec->findnodes('/datafile/game')) {
+    if ($game->{name} eq $best_match) {
+      tosec_rom:
+        for my $tosec_rom ($game->getElementsByTagName('rom')) {
+            # TODO check all roms to make sure there's one for the
+            # current rom
+            for my $romfile (keys(%md5sums)) {
+                if ($md5sums{$romfile} eq $tosec_rom->{md5}) {
+                    next tosec_rom;
+                }
+            }
+            say "ERROR - could not find a match for $tosec_rom->{name}";
+            $error_count++;
+        }
+    }
+}
+
+if ($error_count == 0) {
+    say "game confirmed to be \"$best_match\"";
+    exit 0;
+} else {
+    say "not all roms required by \"$best_match\" could be matched in the game";
+    exit 1;
+}
