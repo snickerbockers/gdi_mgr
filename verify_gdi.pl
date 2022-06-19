@@ -5,8 +5,6 @@ use v5.20;
 use File::Spec::Functions 'catfile';
 use File::Basename;
 use XML::LibXML;
-# use Data::Dumper;
-# use Set::Scalar;
 use Getopt::Std;
 
 # given the path to the .gdi file, get a list of files in that .gdi file
